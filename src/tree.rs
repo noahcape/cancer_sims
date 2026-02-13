@@ -161,8 +161,8 @@ impl<N: Display + Clone, L: Display + Clone> Phylogeny<N, L> {
 
     pub fn write_csv_leaf_labeling<W: Write>(&self, mut w: W) -> io::Result<()> {
         writeln!(w, "leaf,label")?;
-        for (i, n) in self.leaves().enumerate() {
-            writeln!(w, "{},{}", i, self.nodes[n].label)?;
+        for n in self.leaves() {
+            writeln!(w, "{},{}", n, self.nodes[n].label)?;
         }
         Ok(())
     }
