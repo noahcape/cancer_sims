@@ -265,8 +265,6 @@ impl<N: Clone, L: Clone> Phylogeny<N, L> {
                 w = rng.gen_range(0..new.nodes.len());
             }
 
-            dbg!(v, u, w);
-
             // we have u -> v and w
             // make remove v as child to u
             // make v new child of w
