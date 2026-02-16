@@ -7,6 +7,7 @@ use std::{
     io::{self, Write},
 };
 
+use rand::{Rng, thread_rng};
 use serde::Serialize;
 
 /// A simple recursive style tree structure for tree building algorithms like NJ and UPGMA
@@ -67,7 +68,7 @@ impl<N: Clone> Tree<N> {
 }
 
 /// Representation of a node
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Node<N, L> {
     pub data: N,
     pub label: L,
@@ -98,7 +99,7 @@ impl<N: Clone + Display, L: Display> Display for Node<N, L> {
 
 /// Simulation data structure for building a phylogeny top down best for
 /// simulation like tree construction as branching process
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Phylogeny<N, L> {
     pub nodes: Vec<Node<N, L>>,
     root_length: f64,
@@ -188,6 +189,10 @@ impl<N: Clone, L: Clone> Phylogeny<N, L> {
         }
     }
 
+    pub fn copy(&self) -> Self {
+        self.clone()
+    }
+
     /// Get an iterator over leaves
     pub fn leaves(&self) -> impl Iterator<Item = usize> + '_ {
         self.nodes
@@ -230,6 +235,69 @@ impl<N: Clone, L: Clone> Phylogeny<N, L> {
                 .collect(),
         }
     }
+
+    /// Perturb `self` using `ops` random SPR opertions
+    /// Clones `self` to create new tree
+    pub fn perturb(&self, ops: usize) -> Self {
+        let mut rng = thread_rng();
+        let mut new = self.clone();
+
+        let mut executed_ops = 0;
+
+        while executed_ops < ops {
+            let v = rng.gen_range(1..new.nodes.len());
+
+            let parent = if let Some(p) = new.nodes[v].parent {
+                p
+            } else {
+                continue;
+            };
+
+            // do not create new leaves
+            if new.nodes[parent].children.len() == 1 {
+                continue;
+            }
+
+            let mut u = rng.gen_range(0..new.nodes.len());
+            while u == v || u == parent {
+                u = rng.gen_range(0..new.nodes.len());
+            }
+
+            // we have parent -> v and u
+            // make remove v as child to parent
+            // make v new child of u
+            let v_edge = new.nodes[parent]
+                .children
+                .get(
+                    new.nodes[parent]
+                        .children
+                        .iter()
+                        .position(|&(i, _)| i == v)
+                        .unwrap(),
+                )
+                .unwrap()
+                .clone();
+
+            // remove v as child to parent
+            let mut new_parent = new.nodes[parent].clone();
+            new_parent.children.remove(
+                new_parent
+                    .children
+                    .iter()
+                    .position(|&(i, _)| i == v)
+                    .unwrap(),
+            );
+            new.nodes[parent] = new_parent;
+
+            // add v as child of u
+            new.nodes[u].children.push(v_edge);
+            new.nodes[v].parent = Some(u);
+
+            executed_ops += 1;
+        }
+
+        new
+    }
 }
 
 impl<N, L> Phylogeny<N, L> {
@@ -270,4 +338,23 @@ fn build_tree() {
     let leaf2 = Tree::new_leaf(2);
     let tree = Tree::join_with_parent(0, leaf1, 0.5, leaf2, 0.7);
     println!("{}", tree);
+}
+
+#[test]
+fn test_perturb() {
+    let root = Node::<usize, Option<usize>>::root(0, None);
+    let mut tree = Phylogeny::new(root, 0.);
+
+    let mut idx = 1;
+    for _ in 0..2 {
+        let leaves: Vec<_> = tree.leaves().collect();
+        for leaf in leaves {
+            tree.add_child(leaf, idx, None, 0.5);
+            idx += 1;
+            tree.add_child(leaf, idx, None, 0.5);
+            idx += 1;
+        }
+    }
+
+    println!("{:#?}", tree.perturb(2));
 }

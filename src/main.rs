@@ -35,6 +35,31 @@ struct Args {
     /// File name (no file type)
     #[arg(short, long, default_value = "out")]
     out: String,
+
+    /// Number of SPR perturbations to add to the tree
+    #[arg(short, long)]
+    perturbations: Option<usize>,
+}
+
+fn io(tree: &Phylogeny<usize, usize>, base_fname: &str) {
+    match tree.write_csv(File::create(format!("{base_fname}_edgelist.csv")).unwrap()) {
+        Ok(_) => println!("Wrote edgelist to {base_fname}_edgelist.csv"),
+        Err(e) => println!("{e}: while writing edgelist"),
+    }
+
+    match tree.write_csv_vertex_labeling(
+        File::create(format!("{base_fname}_vertex_labeling.csv")).unwrap(),
+    ) {
+        Ok(_) => println!("Wrote vertex labeling to {base_fname}_vertex_labeling.csv"),
+        Err(e) => println!("{e}: while writing vertex labeling"),
+    }
+
+    match tree
+        .write_csv_leaf_labeling(File::create(format!("{base_fname}_leaf_labeling.csv")).unwrap())
+    {
+        Ok(_) => println!("Wrote leaf labeling to {base_fname}_leaf_labeling.csv"),
+        Err(e) => println!("{e}: while writing leaf labeling"),
+    }
 }
 
 fn main() {
@@ -45,31 +70,25 @@ fn main() {
         sites,
         seed,
         out,
+        perturbations,
     } = Args::parse();
 
     let (tree, migration_matrix) =
         Phylogeny::yule_migrations(birth_rate, generations, sites, migration_probability, seed);
 
-    match tree.write_csv(File::create(format!("{out}_edgelist.csv")).unwrap()) {
-        Ok(_) => println!("Wrote edgelist to {out}_edgelist.csv"),
-        Err(e) => println!("{e}: while writing edgelist"),
-    }
-
-    match tree
-        .write_csv_vertex_labeling(File::create(format!("{out}_vertex_labeling.csv")).unwrap())
-    {
-        Ok(_) => println!("Wrote vertex labeling to {out}_vertex_labeling.csv"),
-        Err(e) => println!("{e}: while writing vertex labeling"),
-    }
-
-    match tree.write_csv_leaf_labeling(File::create(format!("{out}_leaf_labeling.csv")).unwrap()) {
-        Ok(_) => println!("Wrote leaf labeling to {out}_leaf_labeling.csv"),
-        Err(e) => println!("{e}: while writing leaf labeling"),
-    }
+    io(&tree, &out);
 
     let g = graph_from_edge_matrix(migration_matrix);
     match save_graph_png(&g, &out) {
         Ok(_) => println!("Save to {out}_migration_graph.png"),
         Err(e) => println!("{e}"),
+    }
+
+    match perturbations {
+        Some(n) => {
+            let perturbed_tree = tree.perturb(n);
+            io(&perturbed_tree, &format!("{out}_perturbed"))
+        }
+        None => return,
     }
 }
