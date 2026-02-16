@@ -45,12 +45,12 @@ impl<N: Clone + Display> Display for Tree<N> {
 
 impl<N: Clone> Tree<N> {
     /// Create a new phylogeny with no children
-    fn new(node: N, children: Vec<(Self, Option<f64>)>) -> Self {
+    pub fn new(node: N, children: Vec<(Self, Option<f64>)>) -> Self {
         Self { node, children }
     }
 
     /// Construct a new leaf - phylogeny without any children
-    fn new_leaf(node: N) -> Self {
+    pub fn new_leaf(node: N) -> Self {
         Self {
             node,
             children: vec![],
@@ -58,7 +58,7 @@ impl<N: Clone> Tree<N> {
     }
 
     /// Join to phylogenies with a given parent
-    fn join_with_parent(parent: N, l: Self, ld: f64, r: Self, rd: f64) -> Self {
+    pub fn join_with_parent(parent: N, l: Self, ld: f64, r: Self, rd: f64) -> Self {
         // this is for bottom up construction like NJ or UPGMA
         Self {
             node: parent,
@@ -246,30 +246,34 @@ impl<N: Clone, L: Clone> Phylogeny<N, L> {
 
         while executed_ops < ops {
             let v = rng.gen_range(1..new.nodes.len());
+            // get descendents of v
+            let v_child: Vec<_> = new.descendents(v);
 
-            let parent = if let Some(p) = new.nodes[v].parent {
+            let u = if let Some(p) = new.nodes[v].parent {
                 p
             } else {
                 continue;
             };
 
             // do not create new leaves
-            if new.nodes[parent].children.len() == 1 {
+            if new.nodes[u].children.len() == 1 {
                 continue;
             }
 
-            let mut u = rng.gen_range(0..new.nodes.len());
-            while u == v || u == parent {
-                u = rng.gen_range(0..new.nodes.len());
+            let mut w = rng.gen_range(0..new.nodes.len());
+            while w == v || w == u || v_child.contains(&w) {
+                w = rng.gen_range(0..new.nodes.len());
             }
 
-            // we have parent -> v and u
-            // make remove v as child to parent
-            // make v new child of u
-            let v_edge = new.nodes[parent]
+            dbg!(v, u, w);
+
+            // we have u -> v and w
+            // make remove v as child to u
+            // make v new child of w
+            let v_edge = new.nodes[u]
                 .children
                 .get(
-                    new.nodes[parent]
+                    new.nodes[u]
                         .children
                         .iter()
                         .position(|&(i, _)| i == v)
@@ -279,24 +283,65 @@ impl<N: Clone, L: Clone> Phylogeny<N, L> {
                 .clone();
 
             // remove v as child to parent
-            let mut new_parent = new.nodes[parent].clone();
-            new_parent.children.remove(
-                new_parent
+            let mut old_parent = new.nodes[u].clone();
+            old_parent.children.remove(
+                old_parent
                     .children
                     .iter()
                     .position(|&(i, _)| i == v)
                     .unwrap(),
             );
-            new.nodes[parent] = new_parent;
+            new.nodes[u] = old_parent;
 
-            // add v as child of u
-            new.nodes[u].children.push(v_edge);
-            new.nodes[v].parent = Some(u);
+            // add v as child of w
+            new.nodes[w].children.push(v_edge);
+            new.nodes[v].parent = Some(w);
 
             executed_ops += 1;
         }
 
         new
+    }
+
+    fn descendents(&self, target: usize) -> Vec<usize> {
+        let mut descendents = vec![];
+        let mut queue = vec![target];
+
+        while !queue.is_empty() {
+            let v = queue.pop().unwrap();
+            for &(c, _) in &self.nodes[v].children {
+                queue.push(c);
+            }
+            descendents.push(v);
+        }
+
+        descendents
+    }
+
+    fn is_tree(&self) -> bool {
+        let mut visited = vec![];
+        let mut queue = vec![self.root];
+
+        while visited.len() != self.nodes.len() {
+            let v = match queue.pop() {
+                Some(v) => v,
+                None => {
+                    println!("Disconnected");
+                    return false;
+                }
+            };
+
+            for (c, _) in &self.nodes[v].children {
+                if visited.contains(c) {
+                    println!("Cycle");
+                    return false;
+                }
+                queue.push(*c);
+            }
+            visited.push(v);
+        }
+
+        true
     }
 }
 
@@ -357,4 +402,87 @@ fn test_perturb() {
     }
 
     println!("{:#?}", tree.perturb(2));
+}
+
+#[test]
+fn is_tree() {
+    let root = Node::<usize, Option<usize>>::root(0, None);
+    let mut tree = Phylogeny::new(root, 0.);
+
+    let mut idx = 1;
+    for _ in 0..2 {
+        let leaves: Vec<_> = tree.leaves().collect();
+        for leaf in leaves {
+            tree.add_child(leaf, idx, None, 0.5);
+            idx += 1;
+            tree.add_child(leaf, idx, None, 0.5);
+            idx += 1;
+        }
+    }
+
+    assert!(tree.is_tree())
+}
+
+#[test]
+fn is_not_tree() {
+    let root = Node::<usize, Option<usize>>::root(0, None);
+    let mut tree = Phylogeny::new(root, 0.);
+
+    let mut idx = 1;
+    for _ in 0..2 {
+        let leaves: Vec<_> = tree.leaves().collect();
+        for leaf in leaves {
+            tree.add_child(leaf, idx, None, 0.5);
+            idx += 1;
+            tree.add_child(leaf, idx, None, 0.5);
+            idx += 1;
+        }
+    }
+
+    // disconnect tree
+    tree.nodes[1].children = vec![];
+
+    assert!(!tree.is_tree())
+}
+
+#[test]
+fn perturbed_remains_tree() {
+    let root = Node::<usize, Option<usize>>::root(0, None);
+    let mut tree = Phylogeny::new(root, 0.);
+
+    let mut idx = 1;
+    for _ in 0..10 {
+        let leaves: Vec<_> = tree.leaves().collect();
+        for leaf in leaves {
+            tree.add_child(leaf, idx, None, 0.5);
+            idx += 1;
+            tree.add_child(leaf, idx, None, 0.5);
+            idx += 1;
+        }
+    }
+
+    let p_tree = tree.perturb(5);
+    assert!(p_tree.is_tree())
+}
+
+#[test]
+fn nodes_reachable() {
+    let root = Node::<usize, Option<usize>>::root(0, None);
+    let mut tree = Phylogeny::new(root, 0.);
+
+    let mut idx = 1;
+    for _ in 0..2 {
+        let leaves: Vec<_> = tree.leaves().collect();
+        for leaf in leaves {
+            tree.add_child(leaf, idx, None, 0.5);
+            idx += 1;
+            tree.add_child(leaf, idx, None, 0.5);
+            idx += 1;
+        }
+    }
+
+    println!("{:?}", tree.descendents(0));
+    println!("{:?}", tree.descendents(1));
+    println!("{:?}", tree.descendents(2));
+    println!("{:?}", tree.descendents(4));
 }
