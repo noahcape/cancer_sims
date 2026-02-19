@@ -1,6 +1,6 @@
-///! This is a first stab at creating a rust implementation of a weighted phylogenetic tree
-///!
-///! Trees nodes will be generic so that they can be used to simulate different models
+//! This is a first stab at creating a rust implementation of a weighted phylogenetic tree
+//!
+//! Trees nodes will be generic so that they can be used to simulate different models
 use std::{
     fmt::{self, Display},
     fs,
@@ -268,7 +268,7 @@ impl<N: Clone, L: Clone> Phylogeny<N, L> {
             // we have u -> v and w
             // make remove v as child to u
             // make v new child of w
-            let v_edge = new.nodes[u]
+            let v_edge = *new.nodes[u]
                 .children
                 .get(
                     new.nodes[u]
@@ -277,8 +277,7 @@ impl<N: Clone, L: Clone> Phylogeny<N, L> {
                         .position(|&(i, _)| i == v)
                         .unwrap(),
                 )
-                .unwrap()
-                .clone();
+                .unwrap();
 
             // remove v as child to parent
             let mut old_parent = new.nodes[u].clone();
@@ -305,8 +304,7 @@ impl<N: Clone, L: Clone> Phylogeny<N, L> {
         let mut descendents = vec![];
         let mut queue = vec![target];
 
-        while !queue.is_empty() {
-            let v = queue.pop().unwrap();
+        while let Some(v) = queue.pop() {
             for &(c, _) in &self.nodes[v].children {
                 queue.push(c);
             }
@@ -316,7 +314,7 @@ impl<N: Clone, L: Clone> Phylogeny<N, L> {
         descendents
     }
 
-    fn is_tree(&self) -> bool {
+    pub fn is_tree(&self) -> bool {
         let mut visited = vec![];
         let mut queue = vec![self.root];
 
